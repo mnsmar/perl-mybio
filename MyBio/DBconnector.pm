@@ -1,3 +1,52 @@
+use GenOO::RegionCollection::Factory;
+use GenOO::TranscriptCollection::Factory;
+ 
+# Create collection of RNA-Seq reads. The reads are stored in a MySQL table
+my $rnaseq_reads = GenOO::RegionCollection::Factory->create('DBIC', {
+    database => 'test_db',
+    table    => 'test_table',
+    user     => 'user',
+    password => 'pass',
+})->read_collection;
+ 
+# Create collection of gene transcripts. Transcripts are stored in a GTF file downloaded from UCSC
+my $transcripts = GenOO::TranscriptCollection::Factory->create('GTF', {
+    file => $transcript_gtf_file
+})->read_collection;
+ 
+# Create collection of Single Nucleotide Polymorphisms. The SNPs are stored in a BED file
+my $snps = GenOO::RegionCollection::Factory->create('BED', {
+    file => $snps_bed_file,
+})->read_collection;
+ 
+# Loop on transcripts, get their expression and filter SNPs
+$transcripts->foreach_record_do( sub {
+    my ($transcript) = @_;
+    
+    if ($transcript->is_coding) {
+        my $expression = $rnaseq_reads->total_copy_number_for_records_contained_in_region(
+            $transcript->strand,
+            $transcript->chromosome,
+            $transcript->start,
+            $transcript->stop
+        );
+        
+        if ($expression > 0) {
+            my @coding_exons = @{$transcript->cds->exons};
+            foreach my $exon (@coding_exons) {
+                my @overlapping_snps = $snps->records_overlapping_region(
+                    $exon->strand,
+                    $exon->chromosome,
+                    $exon->start,
+                    $exon->stop
+                );
+                print $_->to_string."\n" for @overlapping_snps;
+            }
+        }
+    }
+});
+
+
 # POD documentation - main docs before the code
 
 =head1 NAME
